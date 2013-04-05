@@ -1,0 +1,512 @@
+<!DOCTYPE html>
+<html>
+
+  <head>
+    <meta charset='utf-8' />
+    <meta http-equiv="X-UA-Compatible" content="chrome=1" />
+    <meta name="description" content="Spira : Spira is a framework for viewing RDF data as model objects" />
+
+    <link rel="stylesheet" type="text/css" media="screen" href="stylesheets/stylesheet.css">
+
+    <title>Spira</title>
+  </head>
+
+  <body>
+
+    <!-- HEADER -->
+    <div id="header_wrap" class="outer">
+        <header class="inner">
+          <a id="forkme_banner" href="https://github.com/ruby-rdf/spira">View on GitHub</a>
+
+          <h1 id="project_title">Spira</h1>
+          <h2 id="project_tagline">Spira is a framework for viewing RDF data as model objects</h2>
+
+            <section id="downloads">
+              <a class="zip_download_link" href="https://github.com/ruby-rdf/spira/zipball/master">Download this project as a .zip file</a>
+              <a class="tar_download_link" href="https://github.com/ruby-rdf/spira/tarball/master">Download this project as a tar.gz file</a>
+            </section>
+        </header>
+    </div>
+
+    <!-- MAIN CONTENT -->
+    <div id="main_content_wrap" class="outer">
+      <section id="main_content" class="inner">
+        <h1>Spira <a href="http://travis-ci.org/ruby-rdf/spira"><img src="https://travis-ci.org/ruby-rdf/spira.png?branch=master" alt="Build Status"></a>
+</h1>
+
+<p>It's time to breathe life into your linked data.</p>
+
+<h2>Synopsis</h2>
+
+<p>Spira is a framework for using the information in <a href="http://rdf.rubyforge.org">RDF.rb</a> repositories as model
+objects.  It gives you the ability to work in a resource-oriented way without
+losing access to statement-oriented nature of linked data, if you so choose.
+It can be used either to access existing RDF data in a resource-oriented way,
+or to create a new store of RDF data based on simple defaults.</p>
+
+<p>An introductory blog post is at <a href="http://blog.datagraph.org/2010/05/spira">http://blog.datagraph.org/2010/05/spira</a></p>
+
+<p>A changelog is available in the {file:CHANGES.md} file.</p>
+
+<h3>Example</h3>
+
+<pre><code>class Person &lt; Spira::Base
+
+  configure :base_uri =&gt; "http://example.org/example/people"
+
+  property :name, :predicate =&gt; FOAF.name, :type =&gt; String
+  property :age,  :predicate =&gt; FOAF.age,  :type =&gt; Integer
+
+end
+
+bob = RDF::URI("http://example.org/people/bob").as(Person)
+bob.age  = 15
+bob.name = "Bob Smith"
+bob.save!
+
+bob.each_statement {|s| puts s}
+#=&gt; RDF::Statement:0x80abb80c(&lt;http://example.org/example/people/bob&gt; &lt;http://xmlns.com/foaf/0.1/name&gt; "Bob Smith" .)
+#=&gt; RDF::Statement:0x80abb8fc(&lt;http://example.org/example/people/bob&gt; &lt;http://xmlns.com/foaf/0.1/age&gt; "15"^^&lt;http://www.w3.org/2001/XMLSchema#integer&gt; .)
+</code></pre>
+
+<h3>Features</h3>
+
+<ul>
+<li>Extensible validations system</li>
+<li>Extensible types system</li>
+<li>Easy to use multiple data sources</li>
+<li>Easy to adapt models to existing data</li>
+<li>Open-world semantics</li>
+<li>Objects are still RDF.rb-compatible enumerable objects</li>
+<li>No need to put everything about an object into Spira</li>
+<li>Easy to use a resource as multiple models</li>
+</ul><h2>ActiveModel integration</h2>
+
+<p>This is a version of Spira that makes use of ActiveModel. The goal of this version is
+to replace all the internals of Spira with ActiveModel hooks, and thus get rid of
+superfluous code and increase compatibility with Rails stack. I want it to be
+a drop-in replacement for ActiveRecord or any other mature ORM solution they use
+with Ruby on Rails.</p>
+
+<p>Although I've been trying to make the impact of this transition to be as little
+as possible, there are a few changes that you should be aware of:</p>
+
+<ul>
+<li>Read the comments on "new_record?" and "reload" methods. They are key methods in
+understanding how Spira is working with the repository. Basically, a Spira record
+is new, if the repository has no statements with this record as subject. This means,
+that <em>the repository is queried every time you invoke "new_record?"</em>.
+Also note that if Spira.repository is not set, your Spira resource will always be "new".
+Also note that instantiating a new Spira resource sends a query to the repository,
+if it is set, but should work just fine even if it's not (until you try to "save" it).</li>
+<li>Customary Rails' record manipulation methods are preferred now.
+This means, you should use more habitual "save", "destroy", "update_attributes", etc.
+instead of the "save!", "destroy!", "update", "update!" and others, as introduced
+by the original Spira gem.</li>
+<li>Callbacks are now handled by ActiveModel. Previous ways of defining them are
+no longer valid. This also introduces the "before_", "after_" and "around_" callbacks
+as well as their "_validation", "_save", "_update" and "_create" companions for you to enjoy.</li>
+<li>Validations are also handled by ActiveModel. With all the helper methods you have in
+ActiveRecord.</li>
+<li>A spira resource (class) must be defined by <em>inheriting</em> it from Spira::Base.
+Using "include Spira::Resource" is <em>temporarily</em> broken, but will be back at some point,
+with improvements and stuff.</li>
+<li>"after/before_create" callbacks are <em>not</em> called when only the properties of your
+Spira resource are getting persisted. That is, you may create a "type"-less Spira resource,
+assign properties to it, then #save it -- "_create" callbacks will not be triggered,
+because Spira cannot infer a resource definition ("resource - RDF.type - type")
+for such resource and will only persist its properties.
+Although this is how the original Spira behaves too, I thought I'd state it
+explicitly here before you start freaking out.</li>
+<li>Configuration options "base_uri", "default_vocabulary" and "repository_name" are
+now configured via "configure" method (see the examples below).</li>
+<li>A couple of (not so) subtle changes:
+1) Global caching is gone. This means that "artist.works.first.artist" (reverse lookup)
+does not return the original artist, but its copy retrieved from the database.</li>
+</ul><h2>Getting Started</h2>
+
+<p>The easiest way to work with Spira is to install it via Rubygems:</p>
+
+<pre><code>$ sudo gem install spira
+</code></pre>
+
+<p>Downloads will be available on the github project page, as well as on Rubyforge.</p>
+
+<h2>Defining Model Classes</h2>
+
+<p>To use Spira, define model classes for your RDF data.  Spira classes include
+RDF, and thus have access to all <code>RDF::Vocabulary</code> classes and <code>RDF::URI</code>
+without the <code>RDF::</code> prefix.  For example:</p>
+
+<pre><code>require 'spira'
+
+class CD &lt; Spira::Base
+  configure :base_uri =&gt; 'http://example.org/cds'
+  property :name,   :predicate =&gt; DC.title,   :type =&gt; XSD.string
+  property :artist, :predicate =&gt; URI.new('http://example.org/vocab/artist'), :type =&gt; :artist
+end
+
+class Artist &lt; Spira::Base
+  configure :base_uri =&gt; 'http://example.org/artists'
+  property :name, :predicate =&gt; DC.title, :type =&gt; XSD.string
+  has_many :cds,  :predicate =&gt; URI.new('http://example.org/vocab/published_cd'), :type =&gt; XSD.string
+end
+</code></pre>
+
+<p>Then use your model classes, in a way more or less similar to any number of ORMs:</p>
+
+<pre><code>cd = CD.for("queens-greatest-hits")
+cd.name = "Queen's greatest hits"
+artist = Artist.for("queen")
+artist.name = "Queen"
+
+cd.artist = artist
+cd.save!
+artist.cds = [cd]
+artist.save!
+
+queen = Artist.for('queen')
+hits = CD.for 'queens-greatest-hits'
+hits.artist == artist == queen
+</code></pre>
+
+<h3>URIs and Blank Nodes</h3>
+
+<p>Spira instances have a subject, which is either a URI or a blank node.</p>
+
+<p>A class with a base URI can instantiate with a string (or anything, via to_s),
+and it will have a URI representation:</p>
+
+<pre><code>Artist.for('queen')
+</code></pre>
+
+<p>However, a class is not required to have a base URI, and even if it does, it
+can always access classes with a full URI:</p>
+
+<pre><code>nk = Artist.for(RDF::URI.new('http://example.org/my-hidden-cds/new-kids'))
+</code></pre>
+
+<p>If you have a URI that you would like to look at as a Spira resource, you can instantiate it from the URI:</p>
+
+<pre><code>RDF::URI.new('http://example.org/my-hidden-cds/new-kids').as(Artist)
+# =&gt; &lt;Artist @subject=http://example.org/my-hidden-cds/new-kids&gt;
+</code></pre>
+
+<p>Any call to 'for' with a valid identifier will always return an object with nil
+fields.  It's a way of looking at a given resource, not a closed-world mapping
+to one.</p>
+
+<p>You can also use blank nodes more or less as you would a URI:</p>
+
+<pre><code>remix_artist = Artist.for(RDF::Node.new)
+# =&gt; &lt;Artist @subject=#&lt;RDF::Node:0xd1d314(_:g13751060)&gt;&gt;
+RDF::Node.new.as(Artist)
+# =&gt; &lt;Artist @subject=#&lt;RDF::Node:0xd1d314(_:g13751040)&gt;&gt;
+</code></pre>
+
+<p>Finally, you can create an instance of a Spira projection with #new, and you'll
+get an instance with a shiny new blank node subject:</p>
+
+<pre><code>formerly_known_as_prince = Artist.new
+# =&gt; &lt;Artist @subject=#&lt;RDF::Node:0xd1d314(_:g13747140)&gt;&gt;
+</code></pre>
+
+<h3>Class Options</h3>
+
+<p>A number of options are available for Spira classes.</p>
+
+<h4>base_uri</h4>
+
+<p>A class with a <code>base_uri</code> set (either an <code>RDF::URI</code> or a <code>String</code>) will
+use that URI as a base URI for non-absolute <code>for</code> calls.</p>
+
+<p>Example
+    CD.for 'queens-greatest-hits' # is the same as...
+    CD.for RDF::URI.new('<a href="http://example.org/cds/queens-greatest-hits'">http://example.org/cds/queens-greatest-hits'</a>)</p>
+
+<h4>type</h4>
+
+<p>A class with a <code>type</code> set is assigned an <code>RDF.type</code> on creation and saving.</p>
+
+<pre><code>class Album &lt; Spira::Base
+  type URI.new('http://example.org/types/album')
+  property :name,   :predicate =&gt; DC.title
+end
+
+rolling_stones = Album.for RDF::URI.new('http://example.org/cds/rolling-stones-hits')
+# See RDF.rb at http://rdf.rubyforge.org/RDF/Enumerable.html for more information about #has_predicate?
+rolling_stones.has_predicate?(RDF.type) #=&gt; true
+Album.type #=&gt; RDF::URI('http://example.org/types/album')
+</code></pre>
+
+<p>In addition, one can count the members of a class with a <code>type</code> defined:</p>
+
+<pre><code>Album.count  #=&gt; 1 
+</code></pre>
+
+<p>It is possible to assign multiple types to a Spira class:</p>
+
+<pre><code>class Man &lt; Spira::Base
+  type RDF::URI.new('http://example.org/people/father')
+  type RDF::URI.new('http://example.org/people/cop')
+end
+</code></pre>
+
+<p>All assigned types are accessible via "types":</p>
+
+<pre><code>Man.types #=&gt; #&lt;Set: {#&lt;RDF::URI:0xd5ebc0(http://example.org/people/father)&gt;, #&lt;RDF::URI:0xd5e4b8(http://example.org/people/cop)&gt;}&gt;
+</code></pre>
+
+<p>Also note that "type" actually returns a first type from the list of types.</p>
+
+<h4>property</h4>
+
+<p>A class declares property members with the <code>property</code> function.  See <code>Property Options</code> for more information.</p>
+
+<h4>has_many</h4>
+
+<p>A class declares list members with the <code>has_many</code> function.  See <code>Property Options</code> for more information.</p>
+
+<h4>default_vocabulary</h4>
+
+<p>A class with a <code>default_vocabulary</code> set will transparently create predicates for defined properties:</p>
+
+<pre><code>class Song &lt; Spira::Base
+  configure :default_vocabulary =&gt; URI.new('http://example.org/vocab'),
+            :base_uri =&gt; 'http://example.org/songs'
+  property :title
+  property :author, :type =&gt; :artist
+end
+
+dancing_queen = Song.for 'dancing-queen'
+dancing_queen.title = "Dancing Queen"
+dancing_queen.artist = abba
+# See RDF::Enumerable for #has_predicate?
+dancing_queen.has_predicate?(RDF::URI.new('http://example.org/vocab/title'))  #=&gt; true
+dancing_queen.has_predicate?(RDF::URI.new('http://example.org/vocab/artist')) #=&gt; true
+</code></pre>
+
+<h4>repository_name</h4>
+
+<p>Provides this class with a default repository to use instead of the <code>:default</code>
+repository if one is not set.</p>
+
+<pre><code>class Song &lt; Spira::Base
+  configure :repository_name =&gt; :songs
+end
+</code></pre>
+
+<p>See 'Defining Repositories' for more information.</p>
+
+<h3>Property Options</h3>
+
+<p>Spira classes can have properties that are either singular or a list.  For a
+list, define the property with <code>has_many</code>, for a property with a single item,
+use <code>property</code>.  The semantics are otherwise the same.  A <code>has_many</code> property
+will always return a list, including an empty list for no value.  All options
+for <code>property</code> work for <code>has_many</code>.</p>
+
+<pre><code>property :artist, :type =&gt; :artist    #=&gt; cd.artist returns a single value
+has_many :cds,    :type =&gt; :cd        #=&gt; artist.cds returns an array
+</code></pre>
+
+<p>Property always takes a symbol name as a name, and a variable list of options.  The supported options are:</p>
+
+<ul>
+<li>
+<code>:type</code>: The type for this property.  This can be a Ruby base class, an 
+RDF::XSD entry, or another Spira model class, referenced as a symbol.  See
+<strong>Types</strong> below.  Default: <code>Any</code>
+</li>
+<li>
+<code>:predicate</code>: The predicate to use for this type.  This can be any RDF URI.
+This option is required unless the <code>default_vocabulary</code> has been used.</li>
+<li>
+<code>:localized</code>: Indicates if the property is multilingual. See 'Localized Properties'</li>
+</ul><h4>Localized Properties</h4>
+
+<p>A localized property allows to define a value per language. It only works with
+properties having a single item, ie defined with <code>property</code>.</p>
+
+<pre><code>class Article &lt; Spira::Base
+  property :label, :localized =&gt; true
+end
+
+# default locale :en
+random_article = Article.for 'random-article'
+random_article.label = "A label in english"
+i18n.locale = :fr
+random_article.label = "Un libellé en français"
+
+random_article.label_native
+# #=&gt; [#&lt;RDF::Literal:0xdb47c8("A label in english"@en)&gt;, #&lt;RDF::Literal:0xe5c3d8("Un libellé en français"@fr)&gt;]
+
+random_article.label_with_locales
+# #=&gt; {:en=&gt;"A label in english", :fr=&gt;"Un libellé en français"}
+</code></pre>
+
+<h3>Types</h3>
+
+<p>A property's type can be either a class which includes Spira::Type or a
+reference to another Spira model class, given as a symbol.</p>
+
+<h4>Relations</h4>
+
+<p>If the <code>:type</code> of a spira class is the name of another Spira class as a symbol,
+such as <code>:artist</code> for <code>Artist</code>, Spira will attempt to load the referenced
+object when the appropriate property is accessed.</p>
+
+<p>In the RDF store, this will be represented by the URI of the referenced object.</p>
+
+<h4>Type Classes</h4>
+
+<p>A type class includes Spira::Type, and can implement serialization and
+deserialization functions, and register aliases to themselves if their datatype
+is usually expressed as a URI.  Here is the built-in Spira Integer class:</p>
+
+<pre><code>module Spira::Types
+  class Integer
+
+    include Spira::Type
+
+    def self.unserialize(value)
+      value.object
+    end
+
+    def self.serialize(value)
+      RDF::Literal.new(value)
+    end
+
+    register_alias RDF::XSD.integer
+  end
+end
+</code></pre>
+
+<p>Classes can now use this particular type like so:</p>
+
+<pre><code>class Test &lt; Spira::Base
+  property :test1, :type =&gt; Integer
+  property :test2, :type =&gt; RDF::XSD.integer
+end
+</code></pre>
+
+<p>Spira classes include the Spira::Types namespace, where several default types
+are implemented:</p>
+
+<ul>
+<li><code>Integer</code></li>
+<li><code>Float</code></li>
+<li><code>Boolean</code></li>
+<li><code>String</code></li>
+<li><code>Any</code></li>
+</ul><p>The default type for a Spira property is <code>Spira::Types::Any</code>, which uses
+<code>RDF::Literal</code>'s automatic boxing/unboxing of XSD types as best it can.  See
+<code>[RDF::Literal](http://rdf.rubyforge.org/RDF/Literal.html)</code> for more information.</p>
+
+<p>You can implement your own types as well.  Your class' serialize method should
+turn an RDF::Value into a ruby object, and vice versa.</p>
+
+<pre><code>module MyModule
+  class MyType
+    include Spira::Type
+    def self.serialize(value)
+      ...
+    end
+
+    def self.unserialize(value)
+      ...
+    end
+  end
+end
+
+class MyClass &lt; Spira::Base
+  property :property1, :type =&gt; MyModule::MyType
+end
+</code></pre>
+
+<h2>Defining Repositories</h2>
+
+<p>You can define multiple repositories with Spira, and use more than one at a time:</p>
+
+<pre><code>require 'rdf/ntriples'
+require 'rdf/sesame'
+Spira.add_repository! :cds,    RDF::Sesame::Repository.new 'some_server'
+Spira.add_repository! :albums, RDF::Repository.load('some_file.nt')
+
+class CD &lt; Spira::Base
+  configure :repository_name =&gt; :cds
+end
+class Album &lt; Spira::Base
+  configure :repository_name =&gt; :albums
+end
+</code></pre>
+
+<p>Objects can reference each other cross-repository.</p>
+
+<p>If no repository has been specified, the <code>:default</code> repository will be used.</p>
+
+<pre><code>repo = RDF::Repository.new
+Spira.add_repository! :default, repo
+Artist.repository == repo #=&gt; true
+</code></pre>
+
+<p>Classes can specify a default repository to use other than <code>:default</code> with the
+<code>repository_name</code> function:</p>
+
+<pre><code>class Song &lt; Spira::Base
+  configure :repository_name =&gt; :songs
+end
+
+Song.repository #=&gt; nil, won't use :default
+</code></pre>
+
+<h2>Validations</h2>
+
+<p>[removed]
+See the description of ActiveModel::Validations.</p>
+
+<h2>Hooks</h2>
+
+<p>[removed]
+See the description of ActiveModel::Callbacks.</p>
+
+<h2>Using Model Objects as RDF.rb Objects</h2>
+
+<p>All model objects are fully-functional as <code>RDF::Enumerable</code>, <code>RDF::Queryable</code>,
+and <code>RDF::Mutable</code>.  This lets you manipulate objects on the RDF statement
+level.  You can also access attributes that are not defined as properties.</p>
+
+<h2>Support</h2>
+
+<p>There are a number of ways to ask for help.  In declining order of preference:</p>
+
+<ul>
+<li>Fork the project and write a failing test, or a pending test for a feature request</li>
+<li>Ask on the <a href="http://lists.w3.org/Archives/Public/public-rdf-ruby/">public-rdf-ruby w3c mailing list</a>
+</li>
+<li>You can post issues to the Github issue queue</li>
+<li>(there might one day be a google group or other such support channel, but not yet)</li>
+</ul><h2>'License'</h2>
+
+<p>Spira is free and unemcumbered software released into the public
+domain.  For more information, see the included UNLICENSE file.</p>
+
+<h2>Contributing</h2>
+
+<p>Fork it on Github and go.  Please make sure you're kosher with the UNLICENSE
+file before contributing.</p>
+      </section>
+    </div>
+
+    <!-- FOOTER  -->
+    <div id="footer_wrap" class="outer">
+      <footer class="inner">
+        <p class="copyright">Spira maintained by <a href="https://github.com/ruby-rdf">ruby-rdf</a></p>
+        <p>Published with <a href="http://pages.github.com">GitHub Pages</a></p>
+      </footer>
+    </div>
+
+    
+
+  </body>
+</html>
